@@ -400,7 +400,7 @@ def pre_process(z_e, in_freq, overlap, fix_dim, dims=3):
         z_e = rearrange(z_e, "b (h w) c -> b w (c h)", h=in_freq)
     elif dims == 4:
         z_e = rearrange(z_e, "b c h w -> b w (c h)")
-    
+
     B, W = z_e.size(0), z_e.size(1)
     # overlap feature frames
     if overlap > 1:

@@ -76,6 +76,12 @@ class ESC(BaseAudioCodec):
             Tuple of latent feature shape (H,W)
         """
         x_feat = self.spec_transform(x)
+        # Pad the last dimension of x_feat to be a multiple of 4
+        last_dim = x_feat.shape[-1]
+        pad_len = (4 - last_dim % 4) % 4
+        if pad_len > 0:
+            pad_shape = [0, pad_len]  # only pad the last dimension
+            x_feat = torch.nn.functional.pad(x_feat, pad_shape)
         enc_hs, feat_shape = self.encoder(x_feat)
         codes = self.decoder.encode(enc_hs, num_streams, self.quantizers, feat_shape)
         return codes, feat_shape
