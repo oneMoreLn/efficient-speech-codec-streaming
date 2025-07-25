@@ -11,6 +11,7 @@
 - **可配置速率限制**：支持带宽控制
 - **设备选择**：可选择特定的音频输入设备
 - **性能监控**：实时统计传输性能
+- **音频保存**：可保存录制的原始音频
 - **优雅中断**：支持Ctrl+C优雅停止
 
 ## 安装依赖
@@ -62,13 +63,23 @@ python -m scripts.sender --microphone --mic_device 1 --model_path ./model/esc9kb
 python -m scripts.sender --microphone --enable_rate_limit --rate_limit_bps 3000 --model_path ./model/esc9kbps_base_adversarial --port 8999
 ```
 
-### 5. 完整参数示例
+### 5. 保存录制的音频
+```bash
+# 保存到指定文件
+python -m scripts.sender --microphone --mic_save_path ./recordings/my_audio.wav --model_path ./model/esc9kbps_base_adversarial --port 8999
+
+# 保存到目录（自动生成时间戳文件名）
+python -m scripts.sender --microphone --mic_save_path ./recordings/ --model_path ./model/esc9kbps_base_adversarial --port 8999
+```
+
+### 6. 完整功能示例
 ```bash
 python -m scripts.sender \\
     --microphone \\
     --mic_device 0 \\
     --enable_rate_limit \\
     --rate_limit_bps 9000 \\
+    --mic_save_path ./recordings/ \\
     --model_path ./model/esc9kbps_base_adversarial \\
     --host localhost \\
     --port 8999
@@ -79,6 +90,7 @@ python -m scripts.sender \\
 ### 发送端参数
 - `--microphone`: 启用麦克风输入模式
 - `--mic_device`: 指定麦克风设备ID（默认使用系统默认设备）
+- `--mic_save_path`: 保存录制音频的路径（可选）
 - `--list_devices`: 列出所有可用的音频输入设备
 - `--enable_rate_limit`: 启用速率限制
 - `--rate_limit_bps`: 设置速率限制（bps，默认3000）
@@ -90,6 +102,32 @@ python -m scripts.sender \\
 - `--model_path`: ESC模型路径
 - `--port`: 监听端口（默认8999）
 - `--save_path`: 音频保存路径（可选）
+
+## 音频保存功能
+
+### 保存格式
+- **文件格式**: WAV (16-bit PCM)
+- **采样率**: 16kHz
+- **声道**: 单声道
+- **编码**: PCM无损压缩
+
+### 保存方式
+1. **指定文件名**: `--mic_save_path /path/to/audio.wav`
+2. **指定目录**: `--mic_save_path /path/to/directory/`（自动生成时间戳文件名）
+
+### 文件命名规则
+- 指定文件: 使用指定的文件名
+- 指定目录: `microphone_recording_YYYYMMDD_HHMMSS.wav`
+
+### 示例
+```bash
+# 保存到指定文件
+--mic_save_path ./recordings/interview.wav
+
+# 保存到目录（自动命名）
+--mic_save_path ./recordings/
+# 生成文件: microphone_recording_20240725_143022.wav
+```
 
 ## 性能监控
 

@@ -77,6 +77,16 @@ def test_microphone_streaming():
                 "name": "麦克风流式传输 + 速率限制",
                 "args": ["--microphone", "--enable_rate_limit"],
                 "duration": 10
+            },
+            {
+                "name": "麦克风流式传输 + 音频保存",
+                "args": ["--microphone", "--mic_save_path", "./output/microphone_test/recorded_audio.wav"],
+                "duration": 8
+            },
+            {
+                "name": "完整功能测试 (速率限制 + 音频保存)",
+                "args": ["--microphone", "--enable_rate_limit", "--mic_save_path", "./output/microphone_test/"],
+                "duration": 8
             }
         ]
         
@@ -179,7 +189,7 @@ def show_microphone_usage():
     """显示麦克风使用说明"""
     print("麦克风流式传输使用说明")
     print("\n安装依赖:")
-    print("  pip install pyaudio")
+    print("  conda run -n esc conda install -c conda-forge pyaudio")
     print("\n基本用法:")
     print("1. 列出音频设备:")
     print("   python -m scripts.sender --list_devices --model_path ./model/esc9kbps_base_adversarial")
@@ -189,12 +199,19 @@ def show_microphone_usage():
     print("   python -m scripts.sender --microphone --mic_device 1 --model_path ./model/esc9kbps_base_adversarial")
     print("\n4. 带速率限制的麦克风传输:")
     print("   python -m scripts.sender --microphone --enable_rate_limit --model_path ./model/esc9kbps_base_adversarial")
+    print("\n5. 保存录制的音频:")
+    print("   python -m scripts.sender --microphone --mic_save_path ./output/my_recording.wav --model_path ./model/esc9kbps_base_adversarial")
+    print("\n6. 保存到目录 (自动生成文件名):")
+    print("   python -m scripts.sender --microphone --mic_save_path ./output/ --model_path ./model/esc9kbps_base_adversarial")
+    print("\n7. 完整功能 (速率限制 + 音频保存):")
+    print("   python -m scripts.sender --microphone --enable_rate_limit --mic_save_path ./recordings/ --model_path ./model/esc9kbps_base_adversarial")
     print("\n特性:")
     print("  - 固定16kHz采样率")
     print("  - 低延迟音频采集")
     print("  - 实时编码和传输")
     print("  - 支持速率限制")
     print("  - 性能监控")
+    print("  - 音频录制保存")
     print("  - 优雅的中断处理 (Ctrl+C)")
 
 def main():

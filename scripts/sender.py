@@ -24,6 +24,7 @@ def parse_args():
     parser.add_argument("--input", type=str, help="input 16kHz mono audio file to encode (optional if using microphone)")
     parser.add_argument("--microphone", action="store_true", help="use microphone input instead of file")
     parser.add_argument("--mic_device", type=int, help="microphone device index")
+    parser.add_argument("--mic_save_path", type=str, help="path to save recorded microphone audio")
     parser.add_argument("--list_devices", action="store_true", help="list available audio devices and exit")
     parser.add_argument("--host", type=str, default="localhost", help="receiver host address")
     parser.add_argument("--port", type=int, default=8888, help="receiver port number")
@@ -331,17 +332,18 @@ class AudioStreamingSender:
             encode_thread.join()
             send_thread.join()
     
-    def stream_microphone(self, device_index: Optional[int] = None):
+    def stream_microphone(self, device_index: Optional[int] = None, save_path: Optional[str] = None):
         """Stream audio from microphone"""
         try:
             # Import microphone module
             from scripts.microphone_input import MicrophoneStreamer
             
-            # Initialize microphone streamer
+            # Initialize microphone streamer with save path
             mic_streamer = MicrophoneStreamer(
                 sample_rate=16000,  # Fixed at 16kHz
                 chunk_size=self.chunk_size,
-                overlap_size=self.overlap_size
+                overlap_size=self.overlap_size,
+                save_path=save_path
             )
             
             # Start recording
@@ -498,7 +500,7 @@ def main():
         if sender.connect(args.host, args.port):
             if args.microphone:
                 # Stream from microphone
-                sender.stream_microphone(args.mic_device)
+                sender.stream_microphone(args.mic_device, args.mic_save_path)
             else:
                 # Stream from file
                 sender.stream_audio_file(args.input, args.realtime)

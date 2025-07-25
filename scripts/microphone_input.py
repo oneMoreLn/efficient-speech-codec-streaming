@@ -12,12 +12,16 @@ import warnings
 from typing import Optional, Iterator, Tuple
 import signal
 import sys
+import wave
+import os
+from datetime import datetime
 
 warnings.filterwarnings("ignore")
 
 class MicrophoneStreamer:
     def __init__(self, sample_rate: int = 16000, chunk_size: int = 16000, 
-                 overlap_size: int = 1600, channels: int = 1, dtype=np.float32):
+                 overlap_size: int = 1600, channels: int = 1, dtype=np.float32,
+                 save_path: Optional[str] = None):
         """
         Initialize microphone streamer
         
@@ -27,6 +31,7 @@ class MicrophoneStreamer:
             overlap_size: Overlap between chunks in samples
             channels: Number of audio channels (1 for mono)
             dtype: Data type for audio samples
+            save_path: Path to save recorded audio (optional)
         """
         self.sample_rate = sample_rate
         self.chunk_size = chunk_size
@@ -34,6 +39,10 @@ class MicrophoneStreamer:
         self.hop_size = chunk_size - overlap_size
         self.channels = channels
         self.dtype = dtype
+        
+        # Audio saving
+        self.save_path = save_path
+        self.recorded_audio = []  # Store all recorded audio for saving
         
         # PyAudio configuration
         self.format = pyaudio.paFloat32
@@ -67,10 +76,13 @@ class MicrophoneStreamer:
         print("可用的音频输入设备:")
         for i in range(self.audio.get_device_count()):
             device_info = self.audio.get_device_info_by_index(i)
-            if device_info['maxInputChannels'] > 0:
-                print(f"  {i}: {device_info['name']} "
-                      f"(channels: {device_info['maxInputChannels']}, "
-                      f"rate: {device_info['defaultSampleRate']})")
+            max_input_channels = device_info.get('maxInputChannels', 0)
+            if isinstance(max_input_channels, (int, float)) and max_input_channels > 0:
+                device_name = device_info.get('name', 'Unknown')
+                default_rate = device_info.get('defaultSampleRate', 0)
+                print(f"  {i}: {device_name} "
+                      f"(channels: {max_input_channels}, "
+                      f"rate: {default_rate})")
     
     def _audio_callback(self, in_data, frame_count, time_info, status):
         """Audio callback function for PyAudio"""
@@ -79,6 +91,10 @@ class MicrophoneStreamer:
         
         # Convert bytes to numpy array
         audio_data = np.frombuffer(in_data, dtype=np.float32)
+        
+        # Save raw audio data if save_path is specified
+        if self.save_path:
+            self.recorded_audio.append(audio_data.copy())
         
         # Put data into queue
         if not self.audio_queue.full():
@@ -93,10 +109,15 @@ class MicrophoneStreamer:
         try:
             # Get device info
             if device_index is None:
-                device_index = self.audio.get_default_input_device_info()['index']
+                default_device = self.audio.get_default_input_device_info()
+                device_index = int(default_device.get('index', 0))
             
             device_info = self.audio.get_device_info_by_index(device_index)
-            print(f"使用音频设备: {device_info['name']}")
+            device_name = device_info.get('name', 'Unknown Device')
+            print(f"使用音频设备: {device_name}")
+            
+            # Clear recorded audio buffer
+            self.recorded_audio = []
             
             # Open audio stream
             self.stream = self.audio.open(
@@ -116,6 +137,8 @@ class MicrophoneStreamer:
             self.stream.start_stream()
             
             print(f"开始录制音频 (采样率: {self.sample_rate}Hz, 声道: {self.channels})")
+            if self.save_path:
+                print(f"音频将保存到: {self.save_path}")
             print("按 Ctrl+C 停止录制")
             
             return True
@@ -134,7 +157,58 @@ class MicrophoneStreamer:
             self.stream.close()
             self.stream = None
         
+        # Save recorded audio if save_path is specified
+        if self.save_path and self.recorded_audio:
+            self.save_recorded_audio()
+        
         print("录制已停止")
+    
+    def save_recorded_audio(self):
+        """Save recorded audio to file"""
+        if not self.recorded_audio or not self.save_path:
+            print("没有录制的音频数据或未指定保存路径")
+            return
+        
+        try:
+            # Concatenate all recorded audio
+            full_audio = np.concatenate(self.recorded_audio)
+            
+            # Ensure save directory exists
+            save_dir = os.path.dirname(self.save_path)
+            if save_dir:
+                os.makedirs(save_dir, exist_ok=True)
+            
+            # Generate filename with timestamp if not specified
+            if os.path.isdir(self.save_path):
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"microphone_recording_{timestamp}.wav"
+                filepath = os.path.join(self.save_path, filename)
+            else:
+                filepath = self.save_path
+                
+            # Convert float32 to int16 for WAV file
+            audio_int16 = (full_audio * 32767).astype(np.int16)
+            
+            # Save as WAV file
+            with wave.open(filepath, 'wb') as wav_file:
+                wav_file.setnchannels(self.channels)
+                wav_file.setsampwidth(2)  # 16-bit
+                wav_file.setframerate(self.sample_rate)
+                wav_file.writeframes(audio_int16.tobytes())
+            
+            duration = len(full_audio) / self.sample_rate
+            file_size = os.path.getsize(filepath)
+            
+            print(f"✅ 音频已保存到: {filepath}")
+            print(f"   时长: {duration:.2f} 秒")
+            print(f"   文件大小: {file_size:,} 字节")
+            
+        except Exception as e:
+            print(f"❌ 保存音频失败: {e}")
+    
+    def set_save_path(self, save_path: str):
+        """Set save path for recorded audio"""
+        self.save_path = save_path
     
     def _process_audio_buffer(self):
         """Process audio buffer and yield chunks"""
@@ -239,6 +313,7 @@ def main():
     parser.add_argument("--sample_rate", type=int, default=16000, help="sample rate")
     parser.add_argument("--chunk_size", type=int, default=16000, help="chunk size")
     parser.add_argument("--overlap_size", type=int, default=1600, help="overlap size")
+    parser.add_argument("--save_path", type=str, help="path to save recorded audio")
     
     args = parser.parse_args()
     
@@ -246,7 +321,8 @@ def main():
     mic_streamer = MicrophoneStreamer(
         sample_rate=args.sample_rate,
         chunk_size=args.chunk_size,
-        overlap_size=args.overlap_size
+        overlap_size=args.overlap_size,
+        save_path=args.save_path
     )
     
     # List devices if requested
