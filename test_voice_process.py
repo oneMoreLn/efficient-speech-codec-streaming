@@ -246,6 +246,9 @@ class AudioTester:
         collected_chunks = []
         start_time = time.time()
         last_activity = start_time
+        wait_for_data = True
+        cycles_detected = 0
+        empty_polls = 0  # 连续空轮询计数
         
         while time.time() - start_time < timeout:
             try:
@@ -255,14 +258,38 @@ class AudioTester:
                     collected_chunks.append(chunk)
                     self.stats['chunks_received'] += 1
                     last_activity = time.time()
+                    wait_for_data = False
+                    empty_polls = 0  # 重置空轮询计数
                     
-                    if len(collected_chunks) % 5 == 0:
+                    # 检测编码周期（每个周期约20个chunk）
+                    if len(collected_chunks) % 20 == 1 and len(collected_chunks) > 20:
+                        cycles_detected += 1
+                        print(f"   检测到第 {cycles_detected} 个解码周期")
+                    
+                    if len(collected_chunks) % 10 == 1:
                         print(f"   已收集 {len(collected_chunks)} 个解码音频块")
                 else:
-                    # 如果3秒内没有新数据，停止收集
-                    if time.time() - last_activity > 3.0:
-                        break
-                    time.sleep(0.1)
+                    empty_polls += 1
+                    
+                    # 如果还在等待初始数据
+                    if wait_for_data:
+                        time.sleep(0.5)
+                    else:
+                        # 检查队列状态来决定是否继续等待
+                        status = self.processor.get_queue_status()
+                        remaining_data = status.get('voice_recv_queue', 0)
+                        
+                        # 如果队列中还有数据，继续等待
+                        if remaining_data > 0:
+                            print(f"   队列中还有 {remaining_data} 个音频块，继续等待...")
+                            time.sleep(0.2)
+                            empty_polls = 0  # 重置计数，因为还有数据
+                        else:
+                            # 只有当队列空了且连续多次轮询都为空时才停止
+                            if empty_polls > 30:  # 3秒 (30 * 0.1)
+                                print(f"   队列为空且连续{empty_polls}次无数据，停止收集")
+                                break
+                            time.sleep(0.1)
                     
             except Exception as e:
                 print(f"❌ 收集音频数据时出错: {e}")
@@ -286,25 +313,35 @@ class AudioTester:
         print(f"📊 开始监控处理过程...")
         
         start_time = time.time()
+        last_status_time = start_time
+        
         while time.time() - start_time < duration:
-            # 获取队列状态
-            status = self.processor.get_queue_status()
+            # 积极传输所有可用的消息包
+            packets_transferred = 0
+            while True:
+                packet = self.processor.get_message_data()
+                if packet is not None:
+                    self.stats['packets_sent'] += 1
+                    # 将数据包放回解码队列进行测试
+                    self.processor.put_message_data(packet)
+                    self.stats['packets_received'] += 1
+                    packets_transferred += 1
+                else:
+                    break
             
-            # 统计数据包
-            packet = self.processor.get_message_data()
-            if packet is not None:
-                self.stats['packets_sent'] += 1
-                # 将数据包放回解码队列进行测试
-                self.processor.put_message_data(packet)
-                self.stats['packets_received'] += 1
+            # 每2秒显示一次状态（减少输出频率）
+            current_time = time.time()
+            if current_time - last_status_time >= 2.0:
+                status = self.processor.get_queue_status()
+                print(f"   队列状态: 发送={status['voice_send_queue']}, 接收={status['voice_recv_queue']}, "
+                      f"消息发送={status['voice2msg_queue']}, 消息接收={status['msg2voice_queue']}")
+                print(f"   统计: 音频块发送={self.stats['chunks_sent']}, 音频块接收={self.stats['chunks_received']}, "
+                      f"数据包发送={self.stats['packets_sent']}, 数据包接收={self.stats['packets_received']}")
+                if packets_transferred > 0:
+                    print(f"   本轮传输了 {packets_transferred} 个数据包")
+                last_status_time = current_time
             
-            # 显示状态
-            print(f"   队列状态: 发送={status['voice_send_queue']}, 接收={status['voice_recv_queue']}, "
-                  f"消息发送={status['voice2msg_queue']}, 消息接收={status['msg2voice_queue']}")
-            print(f"   统计: 音频块发送={self.stats['chunks_sent']}, 音频块接收={self.stats['chunks_received']}, "
-                  f"数据包发送={self.stats['packets_sent']}, 数据包接收={self.stats['packets_received']}")
-            
-            time.sleep(1.0)
+            time.sleep(0.1)  # 减少等待时间，提高传输效率
     
     def test_file_processing(self, input_file: str, output_file: str):
         """
@@ -329,16 +366,16 @@ class AudioTester:
                 return False
             
             # 2. 开始监控
-            monitor_thread = threading.Thread(target=self.monitor_processing, args=(20.0,))
+            monitor_thread = threading.Thread(target=self.monitor_processing, args=(60.0,))  # 增加监控时间
             monitor_thread.start()
             
             # 3. 发送音频数据
             feed_thread = threading.Thread(target=self.feed_audio_chunks, args=(audio_data,))
             feed_thread.start()
             
-            # 4. 等待处理并收集结果
-            time.sleep(2.0)  # 等待处理开始
-            decoded_audio = self.collect_decoded_audio(15.0)
+            # 4. 等待处理并收集结果  
+            time.sleep(5.0)  # 等待处理开始 - 增加等待时间
+            decoded_audio = self.collect_decoded_audio(45.0)  # 大幅增加收集超时时间
             
             # 5. 等待线程完成
             feed_thread.join()
