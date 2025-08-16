@@ -25,17 +25,19 @@ warnings.filterwarnings("ignore")
 class VoiceProcessor:
     """语音处理器 - 负责语音编码、解码、分包和重组"""
     
-    def __init__(self, model_path: str = "model/esc9kbps_base_adversarial", device: str = "cpu"):
+    def __init__(self, model_path: str = "model/esc9kbps_base_adversarial", device: str = "cpu", num_streams: int = 6):
         """
         初始化语音处理器
         
         Args:
             model_path: 模型路径
             device: 设备类型 ("cpu" 或 "cuda")
+            num_streams: 编码时使用的流数量 (默认6)
         """
         self.device = torch.device(device)
         self.model = None
         self.model_path = model_path
+        self.num_streams = num_streams
         self.sample_rate = 4096
         self.chunks_per_period = 20  # 5秒包含20个250ms音频块
         self.period_chunks = 20  # 每个周期的音频块数量
@@ -113,7 +115,7 @@ class VoiceProcessor:
                 with torch.no_grad():
                     if self.model is not None:
                         try:
-                            codes, size = self.model.encode(audio_tensor, num_streams=1)
+                            codes, size = self.model.encode(audio_tensor, num_streams=self.num_streams)
                             
                             # 序列化编码数据 - codes是tensor，size是tuple
                             encoded_bytes = self._serialize_encoded_data(codes, size)
